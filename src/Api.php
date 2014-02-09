@@ -29,7 +29,7 @@ use Academe\Flickr\SessionInterface;
 class Api
 {
     // The name of the token session variable.
-    public $token_session_var = 'phpFlickr_auth_token';
+    public $token_session_var = 'phpFlickr_auth_token9';
 
     // The name of the redirect URL session variable.
     public $redirect_session_var = 'phpFlickr_auth_redirect';
@@ -593,6 +593,12 @@ class Api
         }
     }
 
+    /**
+     * Authorise access to Flickr.
+     * If no token is set, then jumo to Flickr authentication, after (by default) saving
+     * the current page URL in the session for returning to at the end of authentication.
+     */
+
     public function auth ($perms = "read", $remember_uri = true) {
         // Redirects to Flickr's authentication piece if there is no valid token.
         // If remember_uri is set to false, the callback script (included) will
@@ -607,10 +613,13 @@ class Api
             $api_sig = md5($this->secret . "api_key" . $this->api_key . "perms" . $perms);
 
             if ($this->service == "23") {
-                header("Location: http://www.23hq.com/services/auth/?api_key=" . $this->api_key . "&perms=" . $perms . "&api_sig=". $api_sig);
+                $url = "http://www.23hq.com/services/auth/?api_key=" . $this->api_key . "&perms=" . $perms . "&api_sig=". $api_sig;
             } else {
-                header("Location: http://www.flickr.com/services/auth/?api_key=" . $this->api_key . "&perms=" . $perms . "&api_sig=". $api_sig);
+                $url = "http://www.flickr.com/services/auth/?api_key=" . $this->api_key . "&perms=" . $perms . "&api_sig=". $api_sig;
             }
+
+            header("Location: $url");
+
             exit;
         } else {
             $tmp = $this->die_on_error;
@@ -1699,11 +1708,11 @@ class Api
     /**
      * Handle the Flickr callback.
      */
-    public function callback($permissions = 'write', $default_redirect = null, $get = null)
+    public function callback($permissions = 'write', $default_redirect = null, $frob = null)
     {
-        // If get data is not passed in, then get it from the request.
-        if (empty($get)) {
-            $get = $_GET;
+        // If the frob is not passed in, then get it direct from the GET request.
+        if (empty($frob) && ! empty($_GET['frob'])) {
+            $frob = $_GET['frob'];
         }
 
         if (empty($default_redirect)) {
@@ -1716,35 +1725,35 @@ class Api
             $this->session->remove($this->token_session_var);
         }
 
+        // A "frob" will have been passed in by Flickr if the user has authenticated
+        // the request.
+        if (empty($frob)) {
+            // No frob provided; authenticate the user on Flickr.
+            // This will  be an exit point (redirect to Flickr) because the auth token
+            // has been removed from the session.
+            $this->auth($permissions, false);
+        } else {
+            // Get the token from Flickr (using the frob) and store it in the session.
+            $this->auth_getToken($frob);
+        }
+
         // If we have a page to redirect back to, then pull that out of the session.
         if ($this->session->has($this->redirect_session_var) && $this->session->get($this->redirect_session_var, '') != '') {
             $redirect = $this->session->get($this->redirect_session_var);
             $this->session->remove($this->redirect_session_var);
         }
 
-        // A "frob" will have been passed in by Flickr if the user has authenticated
-        // the request.
-        if (empty($get['frob'])) {
-            // No frob provided; authenticate the user on Flickr.
-            // This will  be an exit point (redirect to Flickr) because the auth token
-            // has been removed from the session.
-            // CHECKME: we have removed the redirect URL earlier, so are we going to have a problem
-            // redirecting to the page we originally came from? Possibly we only extract the redirect
-            // from the session once we successfully get the token.
-            $this->auth($permissions, false);
-        } else {
-            // Get the token from Flickr (using the frob) and store it in the session.
-            $this->auth_getToken($get['frob']);
-        }
-
         // If we get this far, then we should have a token for accessing the Flickr services in
         // our session.
         // Redirect back to the page we came from, or the default.
-        if (empty($redirect)) {
-            header("Location: " . $default_redirect);
-        } else {
-            header("Location: " . $redirect);
-        }
+        $url = ( ! empty($redirect) ? $redirect : $default_redirect);
+
+        // We will leave this for teh framework or caller.
+        //header("Location: $url");
+
+        // Return the URL so the caller can return as it sees fit, doing
+        // its own cleanup.
+        return $url;
     }
 }
 

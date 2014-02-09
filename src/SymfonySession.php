@@ -18,6 +18,13 @@ class SymfonySession implements SessionInterface
     // We could probably just replace all these with a single __call() as
     // we are just passing what we are given on to the Symfony session
     // without any changes.
+    // Except, the interface insists the methods are concrete. I'll leave
+    // __call() in just in case there are other session methods we would
+    // like to access.
+
+    public function __call($method, $args) {
+        return call_user_func_array(array($this->session, $method), $args);
+    }
 
     public function has($name)
     {
